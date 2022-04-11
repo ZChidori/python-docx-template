@@ -731,19 +731,20 @@ class DocxTemplate(object):
         return meta.find_undeclared_variables(parse_content)
 
     def get_variables_dictionary(self):
-
-        def variables_json_to_dictionary_recursively(json,dictionary={
-        }):
-            if 'properties' in json:
-                for key in json['properties'].keys():
-                    if 'properties' in json['properties'][key]:
-                        child={
-                        }
-                        variables_json_to_dictionary_recursively(json['properties'][key],child)
-                        dictionary[key]=child
-                    else:
-                        dictionary[key]=''
-            return dictionary
+        def generateVariablesDictionary(json,keyName=None):
+            if 'type' not in json:
+                return {
+                    keyName:''
+                }
+            match json['type']:
+                case 'object':
+                    dictionary={
+                    }
+                    for key in json['properties'].keys():
+                        dictionary[key]=generateVariablesDictionary(json['properties'][key],key) if 'type' in json['properties'][key] else ''
+                    return dictionary
+                case 'array':
+                    return [generateVariablesDictionary(json['items'])]
 
         self.init_docx()
         xml = self.get_xml()
@@ -752,6 +753,6 @@ class DocxTemplate(object):
             for relKey, part in self.get_headers_footers(uri):
                 _xml = self.get_part_xml(part)
                 xml += self.patch_xml(_xml)
-        return variables_json_to_dictionary_recursively(to_json_schema(infer(xml)))
+        return generateVariablesDictionary(to_json_schema(infer(xml)))
 
     undeclared_template_variables = property(get_undeclared_template_variables)
