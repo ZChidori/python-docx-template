@@ -26,7 +26,7 @@ import six
 import binascii
 import os
 import zipfile
-from jinja2schema import infer,to_json_schema
+from jinja2schema import infer,to_json_schema,get_variables_dictionary
 
 
 class DocxTemplate(object):
@@ -730,22 +730,7 @@ class DocxTemplate(object):
         parse_content = env.parse(xml)
         return meta.find_undeclared_variables(parse_content)
 
-    def get_variables_dictionary(self):
-        def generateVariablesDictionary(json,keyName=None):
-            if 'type' not in json:
-                return {
-                    keyName:''
-                }
-            match json['type']:
-                case 'object':
-                    dictionary={
-                    }
-                    for key in json['properties'].keys():
-                        dictionary[key]=generateVariablesDictionary(json['properties'][key],key) if 'type' in json['properties'][key] else ''
-                    return dictionary
-                case 'array':
-                    return [generateVariablesDictionary(json['items'])]
-
+    def get_variables_json(self):
         self.init_docx()
         xml = self.get_xml()
         xml = self.patch_xml(xml)
@@ -753,6 +738,6 @@ class DocxTemplate(object):
             for relKey, part in self.get_headers_footers(uri):
                 _xml = self.get_part_xml(part)
                 xml += self.patch_xml(_xml)
-        return generateVariablesDictionary(to_json_schema(infer(xml)))
+        return get_variables_dictionary(to_json_schema(infer(xml)))
 
     undeclared_template_variables = property(get_undeclared_template_variables)
