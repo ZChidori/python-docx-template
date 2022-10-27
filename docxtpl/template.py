@@ -5,6 +5,8 @@ Created : 2015-03-12
 @author: Eric Lapouyade
 """
 
+from os import PathLike
+from typing import Any, Optional, IO, Union, Dict, Set
 from .subdoc import Subdoc
 import functools
 import io
@@ -35,7 +37,7 @@ class DocxTemplate(object):
     HEADER_URI = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"
     FOOTER_URI = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer"
 
-    def __init__(self, template_file):
+    def __init__(self, template_file: Union[IO[bytes], str, PathLike]) -> None:
         self.template_file = template_file
         self.reset_replacements()
         self.docx = None
@@ -74,21 +76,21 @@ class DocxTemplate(object):
             fh.write(self.get_xml())
 
     def patch_xml(self, src_xml):
-        """ Make a lots of cleanning to have a raw xml understandable by jinja2 :
+        """ Make a lots of cleaning to have a raw xml understandable by jinja2 :
         strip all unnecessary xml tags, manage table cell background color and colspan,
         unescape html entities, etc... """
 
-        # replace {<something>{ by {{   ( works with {{ }} {% and %} )
-        src_xml = re.sub(r'(?<={)(<[^>]*>)+(?=[\{%])|(?<=[%\}])(<[^>]*>)+(?=\})', '',
+        # replace {<something>{ by {{   ( works with {{ }} {% and %} {# and #})
+        src_xml = re.sub(r'(?<={)(<[^>]*>)+(?=[\{%\#])|(?<=[%\}\#])(<[^>]*>)+(?=\})', '',
                          src_xml, flags=re.DOTALL)
 
         # replace {{<some tags>jinja2 stuff<some other tags>}} by {{jinja2 stuff}}
-        # same thing with {% ... %}
+        # same thing with {% ... %} and {# #}
         # "jinja2 stuff" could a variable, a 'if' etc... anything jinja2 will understand
         def striptags(m):
             return re.sub('</w:t>.*?(<w:t>|<w:t [^>]*>)', '',
                           m.group(0), flags=re.DOTALL)
-        src_xml = re.sub(r'{%(?:(?!%}).)*|{{(?:(?!}}).)*', striptags,
+        src_xml = re.sub(r'{%(?:(?!%}).)*|{#(?:(?!#}).)*|{{(?:(?!}}).)*', striptags,
                          src_xml, flags=re.DOTALL)
 
         # manage table cell colspan
@@ -125,14 +127,20 @@ class DocxTemplate(object):
         # {%- will merge with previous paragraph text
         src_xml = re.sub(r'</w:t>(?:(?!</w:t>).)*?{%-', '{%', src_xml, flags=re.DOTALL)
         # -%} will merge with next paragraph text
-        src_xml = re.sub(r'-%}(?:(?!<w:t[ >]).)*?<w:t[^>]*?>', '%}', src_xml, flags=re.DOTALL)
+        src_xml = re.sub(r'-%}(?:(?!<w:t[ >]|{%|{{).)*?<w:t[^>]*?>', '%}', src_xml, flags=re.DOTALL)
 
         for y in ['tr', 'tc', 'p', 'r']:
             # replace into xml code the row/paragraph/run containing
             # {%y xxx %} or {{y xxx}} template tag
-            # by {% xxx %} or {{ xx }} without any surronding <w:y> tags :
+            # by {% xxx %} or {{ xx }} without any surrounding <w:y> tags :
             # This is mandatory to have jinja2 generating correct xml code
             pat = r'<w:%(y)s[ >](?:(?!<w:%(y)s[ >]).)*({%%|{{)%(y)s ([^}%%]*(?:%%}|}})).*?</w:%(y)s>' % {'y': y}
+            src_xml = re.sub(pat, r'\1 \2', src_xml, flags=re.DOTALL)
+
+        for y in ['tr', 'tc', 'p']:
+            # same thing, but for {#y xxx #} (but not where y == 'r', since that
+            # makes less sense to use comments in that context
+            pat = r'<w:%(y)s[ >](?:(?!<w:%(y)s[ >]).)*({#)%(y)s ([^}#]*(?:#})).*?</w:%(y)s>' % {'y': y}
             src_xml = re.sub(pat, r'\1 \2', src_xml, flags=re.DOTALL)
 
         # add vMerge
@@ -317,7 +325,12 @@ class DocxTemplate(object):
             new_part.load_rel(rel.reltype, rel._target, rel.rId, rel.is_external)
         self.docx._part._rels[relKey]._target = new_part
 
-    def render(self, context, jinja_env=None, autoescape=False):
+    def render(
+        self,
+        context: Dict[str, Any],
+        jinja_env: Optional[Environment] = None,
+        autoescape: bool = False
+    ) -> None:
         # init template working attributes
         self.render_init()
 
@@ -371,7 +384,7 @@ class DocxTemplate(object):
                 cells = r.findall(ns+'tc')
                 if (len(columns) + to_add) < len(cells):
                     to_add = len(cells) - len(columns)
-            # is neccessary to add columns?
+            # is necessary to add columns?
             if to_add > 0:
                 # at first, calculate width of table according to columns
                 # (we want to preserve it)
@@ -559,7 +572,7 @@ class DocxTemplate(object):
             self.zipname_to_replace[zipname] = fh.read()
 
     def reset_replacements(self):
-        """Reset replacement dictionnaries
+        """Reset replacement dictionaries
 
         This will reset data for image/embedded/zipname replacement
 
@@ -705,7 +718,7 @@ class DocxTemplate(object):
         return self.docx._part.relate_to(url, REL_TYPE.HYPERLINK,
                                          is_external=True)
 
-    def save(self, filename, *args, **kwargs):
+    def save(self, filename: Union[IO[bytes], str, PathLike], *args, **kwargs) -> None:
         # case where save() is called without doing rendering
         # ( user wants only to replace image/embedded/zipname )
         if not self.is_saved and not self.is_rendered:
@@ -715,7 +728,7 @@ class DocxTemplate(object):
         self.post_processing(filename)
         self.is_saved = True
 
-    def get_undeclared_template_variables(self, jinja_env=None):
+    def get_undeclared_template_variables(self, jinja_env: Optional[Environment] = None) -> Set[str]:
         self.init_docx()
         xml = self.get_xml()
         xml = self.patch_xml(xml)
