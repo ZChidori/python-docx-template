@@ -1,3 +1,11 @@
+0.17.0 (2024-05-01)
+-------------------
+- Add support to python-docx 1.1.1
+
+0.16.8 (2024-02-23)
+-------------------
+- PR #527 : upgrade Jinja2 in Pipfile.lock
+
 0.16.7 (2023-05-08)
 -------------------
 - PR #493 - thanks to AdrianVorobel
